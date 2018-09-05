@@ -440,8 +440,8 @@ defmodule Alchemy.Cogs do
   to deal with potentially missing arguments, pattern matching should be used.
   So, in this case, when a 2nd argument isn't given, an error message is sent back.
   """
-  defmacro def(func, body) do
-    {name, arity, new_func} = inject(func, body)
+  defmacro def(filter \\ [], func, body) do
+    {name, arity, new_func} = inject(filter, func, body)
     quote do
       arity = unquote(arity)
       @commands update_in(@commands, [Atom.to_string(unquote(name))], fn
@@ -456,6 +456,17 @@ defmodule Alchemy.Cogs do
       end)
       unquote(new_func)
     end
+  end
+
+  defp inject filter, name, [{:do, body}] do
+    new_body = 
+      [{:do, quote do
+        all_filters = @default_filter ++ unquote(filter)
+        if Enum.all?(all_filters, fn filter -> filter.(var!(message)) end), do: unquote(body)
+      end
+      }]
+
+    inject name, new_body
   end
 
   defp inject({:when, ctx, [{name, _, args} | func_rest]} = guard, body) do
@@ -475,12 +486,14 @@ defmodule Alchemy.Cogs do
   end
 
   @doc false
-  defmacro __using__(_opts) do
+  defmacro __using__(opts \\ []) do
     quote do
       alias Alchemy.Cogs
       require Cogs
 
       @commands unquote(Macro.escape(%{}))
+
+      @default_filter Keyword.get(unquote(opts), :filter, [])
 
       @before_compile Cogs
     end
